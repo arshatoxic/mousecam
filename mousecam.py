@@ -37,9 +37,7 @@ click_delay = 0.2
 last_click_time = 0
 smooth_x, smooth_y = 0, 0
 
-# فیلتر پیشرفته‌تر برای حذف لرزش (Jitter)
 alpha_base = 0.15 
-
 THRESHOLD_CLICK = 0.55  
 
 is_mouse_down = False
@@ -54,10 +52,9 @@ current_hover_char = None
 typed_buffer = ""
 is_persian = False 
 
-# متغیرهای تنظیم شده برای اسکرول نرم و پویا
 scroll_speed_factor = 180  
 last_scroll_time = 0
-scroll_delay = 0.02        
+scroll_delay = 0.02         
 
 chars_en = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 
             'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 
@@ -107,17 +104,20 @@ def handle_buffer_typing(char):
             pyperclip.copy(typed_buffer)
             typed_buffer = ""
             keyboard_active = False
-            radial_window.withdraw() 
+            if radial_window:
+                radial_window.withdraw() 
             time.sleep(0.08)
             keyboard.press_and_release('ctrl+v')
         elif char == 'Close':
             keyboard_active = False
-            radial_window.withdraw()
+            if radial_window:
+                radial_window.withdraw()
         else:
             typed_buffer += char.lower() if (char.isalpha() and not is_persian) else char
     except Exception as e:
         print(f"Typing error: {e}")
 
+# ================= مدیریت کیبورد مجازی با Tkinter ایمن =================
 def init_keyboard_window():
     global radial_window, canvas, win_w, win_h, pos_x, pos_y
     try:
@@ -125,27 +125,34 @@ def init_keyboard_window():
         radial_window.title("Virtual Keypad Overlay")
         radial_window.overrideredirect(True)
         radial_window.attributes('-topmost', True)
-        radial_window.attributes('-transparentcolor', '#222222') 
+        
+        try:
+            radial_window.attributes('-transparentcolor', '#222222')
+        except:
+            pass 
         
         win_w, win_h = 500, 520 
         pos_x = (screen_width - win_w) // 2
         pos_y = (screen_height - win_h) // 2
         radial_window.geometry(f"{win_w}x{win_h}+{pos_x}+{pos_y}")
         
-        GWL_EXSTYLE = -20
-        WS_EX_NOACTIVATE = 0x08000000
-        hwnd = ctypes.windll.user32.GetParent(radial_window.winfo_id())
-        style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-        ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_NOACTIVATE)
+        try:
+            GWL_EXSTYLE = -20
+            WS_EX_NOACTIVATE = 0x08000000
+            hwnd = ctypes.windll.user32.GetParent(radial_window.winfo_id())
+            style = ctypes.windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+            ctypes.windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_NOACTIVATE)
+        except:
+            pass
         
         canvas = tk.Canvas(radial_window, width=win_w, height=win_h, bg='#222222', highlightthickness=0)
         canvas.pack()
         
-        radial_window.withdraw() 
+        radial_window.withdraw() # ابتدا مخفی باشد
         
         def loop_overlay():
             global keyboard_active, current_hover_char, typed_buffer, is_persian
-            if keyboard_active:
+            if keyboard_active and radial_window:
                 try:
                     canvas.delete("all")
                     canvas.create_rectangle(20, 10, win_w - 20, 55, fill="#393E46", outline="#00ADB5", width=2)
@@ -209,9 +216,11 @@ def init_keyboard_window():
                     canvas.create_oval(rx - 5, ry - 5, rx + 5, ry + 5, fill="#FFD369", outline="")
                 except Exception as e:
                     print(f"Overlay loop error: {e}")
-            radial_window.after(20, loop_overlay) 
             
-        radial_window.after(20, loop_overlay)
+            if radial_window:
+                radial_window.after(30, loop_overlay) 
+            
+        radial_window.after(30, loop_overlay)
         radial_window.mainloop()
     except Exception as e:
         print(f"Failed init window: {e}")
@@ -223,10 +232,12 @@ def toggle_keyboard():
     if not keyboard_active:
         typed_buffer = ""
         keyboard_active = True
-        if radial_window: radial_window.deiconify() 
+        if radial_window: 
+            radial_window.deiconify() 
     else:
         keyboard_active = False
-        if radial_window: radial_window.withdraw() 
+        if radial_window: 
+            radial_window.withdraw() 
 
 def _async_execute(action):
     try:
@@ -278,7 +289,7 @@ def show_settings_window():
                 width=16, 
                 font=("Arial", 9, "bold"), 
                 bg="#FFFFFF", 
-                fg="#000000",          
+                fg="#000000",         
                 activebackground="#00ADB5", 
                 activeforeground="#FFFFFF",
                 highlightthickness=1,
@@ -307,7 +318,10 @@ def draw_distance_line(img, pt1, pt2, rel_dist, threshold):
 while cap.isOpened():
     try:
         ret, frame = cap.read()
-        if not ret: continue
+        if not ret: 
+            time.sleep(0.01)
+            continue
+        
         frame = cv2.flip(frame, 1)
         frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = hands.process(frame_rgb)
@@ -358,7 +372,6 @@ while cap.isOpened():
                         target_x = np.interp(x, [active_area['x_start'], active_area['x_end']], [0, screen_width])
                         target_y = np.interp(y, [active_area['y_start'], active_area['y_end']], [0, screen_height])
                     
-                    # فیلتر حذف لرزش (Jitter) پویا
                     distance = np.hypot(target_x - smooth_x, target_y - smooth_y)
                     dynamic_alpha = alpha_base + (0.25 * (distance / 200.0))
                     dynamic_alpha = np.clip(dynamic_alpha, alpha_base, 0.6)
@@ -392,23 +405,19 @@ while cap.isOpened():
                         
                         finger_closed_start_time = 0
 
-                    # 🟢 بخش اسکرول نرم و هوشمند سازی شده بر اساس میزان فاصله انگشتان
                     if not keyboard_active:
                         current_time = time.time()
                         if current_time - last_scroll_time > scroll_delay:
-                            # اسکرول به بالا (هرچه انگشت شست و حلقه بهم نزدیک‌تر شوند، سرعت بیشتر می‌شود)
                             if rel_ring < THRESHOLD_CLICK:
                                 scroll_amount = int((THRESHOLD_CLICK - rel_ring) * scroll_speed_factor)
                                 pyautogui.scroll(max(1, scroll_amount))
                                 last_scroll_time = current_time
                                 
-                            # اسکرول به پایین (هرچه انگشت شست و کوچک بهم نزدیک‌تر شوند، سرعت بیشتر می‌شود)
                             elif rel_pinky < THRESHOLD_CLICK:
                                 scroll_amount = int((THRESHOLD_CLICK - rel_pinky) * scroll_speed_factor)
                                 pyautogui.scroll(-max(1, scroll_amount))
                                 last_scroll_time = current_time
 
-                            # کلیک راست (با انگشت وسط)
                             if rel_middle < THRESHOLD_CLICK and current_time - last_click_time > click_delay:
                                 pyautogui.click(button='right')
                                 last_click_time = current_time
@@ -430,9 +439,9 @@ while cap.isOpened():
             cv2.putText(frame, current_status_text, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
 
         cv2.imshow("Hand Control System", frame)
-        if cv2.waitKey(1) & 0xFF == 27: break
+        if cv2.waitKey(1) & 0xFF == 27: 
+            break
         
-        # کنترل فریم ریت ناچیز جهت بهینه‌سازی پردازنده و پایداری اسکرول
         time.sleep(0.005)
         
     except Exception as main_err:
